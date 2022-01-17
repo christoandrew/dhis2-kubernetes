@@ -1,0 +1,3 @@
+WARN  2021-12-19T18:40:05.408 89423 deadly_signal:162: got signal 1 (SIGHUP)
+WARN  2021-12-20T23:50:01.998 90353 deadly_signal:162: got signal 1 (SIGHUP)
+WARN  2021-12-21T21:54:25.599 50859 deadly_signal:162: got signal 1 (SIGHUP)

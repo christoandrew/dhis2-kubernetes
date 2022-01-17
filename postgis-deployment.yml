@@ -1,0 +1,187 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgis-pvc
+spec:
+  storageClassName: local
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: postgis-pv
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local
+  capacity:
+    storage: 5Gi
+  hostPath:
+    path: /mnt/data/postgis
+
+---
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgis-password
+data:
+  password: cGFzc3dvcmQK
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgis
+spec:
+  ports:
+    - protocol: TCP
+      port: 5433
+      targetPort: 5432
+  type: NodePort
+  selector:
+    app: postgis
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgis
+  labels:
+    app: postgis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgis
+  template:
+    metadata:
+      name: postgis
+      labels:
+        app: postgis
+    spec:
+      containers:
+        - name: postgis
+          image: postgis/postgis:9.6-2.5-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgis-password
+                  key: password
+            - name: PG_DATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - mountPath: /var/lib/postgresql/data
+              name: postgis-data
+      volumes:
+        - name: postgis-data
+          persistentVolumeClaim:
+            claimName: postgis-pvc
+---
+
+# DHIS Deployment
+
+# Config
+#
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dhis-configmap
+data:
+  dhis.conf: |
+    connection.dialect = org.hibernate.dialect.PostgreSQLDialect
+    connection.driver_class = org.postgresql.Driver
+
+    # "db" maps to service name defined in Docker Compose
+    # "dhis2" maps to POSTGRES_DB environment variable defined in Docker Compose
+    connection.url = jdbc:postgresql://postgis:5433/dhis2
+
+    # maps to POSTGRES_USER environment variable defined in Docker Compose.
+    connection.username = postgres
+
+    # maps to POSTGRES_PASSWORD environment variable in Docker Compose.
+    connection.password = password
+---
+# App
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dhis2
+  labels:
+    app: dhis2
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dhis2
+  template:
+    metadata:
+      name: dhis2
+      labels:
+        app: dhis2
+    spec:
+      containers:
+        - name: dhis2
+          image: dhis2/core:2.37.0-tomcat-8.5.34-jre8-alpine
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: data
+              mountPath: /DHIS2_home
+                #- name: config
+                #  mountPath: DHIS2_home/dhis.conf
+          ports:
+            - containerPort: 8080
+      volumes:
+        - name: data
+          emptyDir: {}
+        - name: config
+          configMap:
+            name: dhis-configmap
+      initContainers:
+        - name: busybox
+          image: busybox
+          command: ["sh", "-c", "cp /etc/config/dhis.conf /etc/config/data/"]
+          volumeMounts:
+             - name: data
+               mountPath: /etc/config/data
+             - name: config
+               mountPath: /etc/config
+---
+# Servic
+apiVersion: v1
+kind: Service
+metadata:
+  name: dhis2-svc
+spec:
+  selector:
+    app: dhis2
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+  type: NodePort
+
+
+
+
+
+
+
+
+
+
+
+
+
